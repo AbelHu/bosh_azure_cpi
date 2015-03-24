@@ -1,0 +1,123 @@
+{
+    "parameters": {
+        "vm_name": {
+            "type": "string"
+        },
+        "vm_user": {
+            "type": "string"
+        },
+        "vm_size": {
+            "type": "string"
+        },
+          "endpoints": {
+            "type": "array"
+        },
+
+        "storage_account_name": {
+            "type": "string"
+        },  
+       "image": {
+            "type": "string"
+        },
+        "subnet_name": {
+            "type": "string"
+        },
+        "virtual_network_name": {
+            "type": "string"
+        },
+        "ip": {
+            "type": "string" 
+        },
+        "domain_name": {
+            "type": "string"
+        },
+       "deploy_script_paramter": {
+            "type": "securestring"
+        },
+
+        "password": {
+            "type": "securestring"
+        },
+        "location": {
+            "type": "string"
+        }
+    },
+
+    "contentVersion": "1.0.0.0",
+    "$schema": "http://schema.management.azure.com/schemas/2014-04-01-preview/deploymentTemplate.json#",
+    "resources": [
+    {
+      "apiVersion": "2014-06-01",
+      "type": "Microsoft.ClassicCompute/domainNames",
+      "name": "[parameters('domain_name')]",
+      "location": "[parameters('location')]",
+      "properties": {}
+    }        
+   ,
+        {
+            "name": "[parameters('vm_name')]",
+            "apiVersion": "2014-06-01",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[concat('Microsoft.ClassicCompute/domainNames/', parameters('domain_name'))]"
+            ],
+            "type": "Microsoft.ClassicCompute/virtualMachines",
+            "properties": {
+                "hardwareProfile": {
+                    "platformGuestAgent": "true",
+                    "size": "[parameters('vm_size')]"
+                },
+                "storageProfile": {
+                    "operatingSystemDisk": {
+                        "caching": "ReadWrite",
+                        "diskName": "[concat(parameters('vm_name'), '-osdisk')]",
+                        "sourceImageName": "[parameters('image')]",
+                        "vhdUri": "[concat('https://',parameters('storage_account_name'), '.blob.core.windows.net/vhds/',  parameters('vm_name'), '-osdisk.vhd')]"
+                    },
+                    "dataDisks": [
+                    ]
+                },
+                "networkProfile": {
+                    "inputEndpoints": "[parameters('endpoints')]"
+                    ,
+                    "virtualNetwork": {
+                        "staticIPAddress": "[parameters('ip')]",
+                        "id": "[concat(resourceGroup().id, '/providers/Microsoft.ClassicNetwork/virtualNetworks/', parameters('virtual_network_name'))]",
+                        "subnetNames": [
+                            "[parameters('subnet_name')]"
+                        ]
+                    }
+                },
+                "operatingSystemProfile": {
+                    "adminUsername": "[parameters('vm_user')]",
+                    "computerName": "[parameters('vm_name')]",
+                    "adminPassword": "[parameters('password')]",
+                    "linuxOperatingSystemProfile": {
+                        "disableSshPasswordAuthentication": "false"
+                        
+                    }
+                },
+               "extensions": [
+                     {
+            
+                        "extension": "CustomScriptForLinux",
+                        "publisher": "Microsoft.OSTCExtensions",
+                        "version": "1.*",
+                        "parameters": {
+                            "public": {
+                                "fileUris": [
+                                    "https://qingfu2.blob.core.windows.net/vhdspublic/deploy_bosh.py"
+                                     ],
+                                "commandToExecute": "[concat('python deploy_bosh.py \"',base64(parameters('deploy_script_paramter')),'\"')]"
+                            }
+                        }
+                    }
+                ],
+                 "domainName": {
+                    "id": "[concat(resourceGroup().id, '/providers/Microsoft.ClassicCompute/domainNames/',parameters('domain_name')) ]"
+                }
+            }
+        }
+    ]
+   
+}

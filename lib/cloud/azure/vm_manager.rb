@@ -18,53 +18,75 @@ module Bosh::AzureCloud
     end
 
     def create(uuid, stemcell, cloud_opts, network_configurator, resource_pool)
+      network_property = network_configurator.network.spec["cloud_properties"]
+      
       params = {
           :vm_name             => "bosh-vm-#{uuid}",
           :vm_user             => cloud_opts['ssh_user'],
           :image               => stemcell,
-          :affinity_group_name => cloud_opts['affinity_group_name'],
-      }
-
-      opts = {
-          :cloud_service_name   => "bosh-service-#{uuid}",
+          :location           => cloud_opts['location'],
+          :domain_name   =>   network_property["domain_name"],
+          :virtual_network_name =>   network_property["virtual_network_name"],
+          :ip => network_configurator.network.spec["ip"],
+          :subnet_name => network_property["subnet_name"],
+          :vm_size => resource_pool['instance_type'],
+          :password => cloud_opts['password'],
           :storage_account_name => @storage_manager.get_storage_account_name,
-          :vm_size              => resource_pool['instance_type'],
-          :certificate_file     => cloud_opts['ssh_certificate_file'],
-          :private_key_file     => cloud_opts['ssh_private_key_file']
       }
 
-      if !network_configurator.vip_network.nil?
-        affinity_group = @affinity_group_manager.get_affinity_group(cloud_opts["affinity_group_name"])
+      deploy_script_paramter = { 
+          :custom_data =>  get_user_data(params[:vm_name],  network_configurator.network.spec["dns"]),
+          :ssh_key => cloud_opts['vm_authorized_keys'],
+          :vm_user => params[:vm_user]
+                               }
+      params[:deploy_script_paramter] = deploy_script_paramter.to_json()
 
-        reserved_ip = @reserved_ip_manager.find(network_configurator.reserved_ip)
+      endpoints = []
+      network_configurator.tcp_endpoints.split(",").each{|p|
+          endpoints.push({
+                    :enableDirectServerReturn=>"False",
+                    :endpointName=>"tcp"+p.split(":")[0].strip,
+                    :publicPort=>p.split(":")[0].strip,
+                    :privatePort=>p.split(":")[1].strip,
+                    :protocol=> "tcp"
+                   }
+                   )
+      }
+      network_configurator.udp_endpoints.split(",").each{|p|
+          endpoints.push({
+                    :enableDirectServerReturn=>"False",
+                    :endpointName=>"udp"+p.split(":")[0].strip,
+                    :publicPort=>p.split(":")[0].strip,
+                    :privatePort=>p.split(":")[1].strip,
+                    :protocol=> "udp"
+            })
+      }
 
-        raise "Given reserved ip does not exist" if reserved_ip.nil?
-        raise "Given reserved ip #{reserved_ip[:location]} does not belong to the location #{affinity_group.location}" unless reserved_ip[:location] == affinity_group.location
-        raise "Given reserved ip #{reserved_ip} is in use" if reserved_ip[:in_use]
+      params[:endpoints]=endpoints
+      crp_params={}
+      params.each_pair do |key,values| crp_params[key]={"value"=>values}  end
+    
+     
+     require 'open3'
+     deployt_crp_log  = ""
+     exit_status = 0
 
-        logger.debug("reserved ip: #{reserved_ip}")
-        opts[:reserved_ip_name] = reserved_ip[:name]
+     `azure config mode arm`
+     Open3.popen3("azure","group","deployment","create",cloud_opts['resource_group_name'],
+                    "-n",params[:vm_name],"-f",File.join(File.dirname(__FILE__),"bosh_deploy_vm.json"),"-p",crp_params.to_json) {|stdin, stdout, stderr, wait_thr|
+         pid = wait_thr.pid # pid of the started process
+         exit_status = wait_thr.value 
+         deployt_crp_log<<stdout.read
+         deployt_crp_log<<stderr.read
+     }
+
+      logger.debug("Create VM: #{deployt_crp_log}")
+      if  exit_status !=0
+        logger.error("Failed to create vm")
+        cloud_error("Failed to create vm")
       end
+      {:cloud_service_name=>params[:domain_name], :vm_name=>params[:vm_name]}
 
-      if (network_configurator.vnet?)
-        opts[:virtual_network_name]             = network_configurator.virtual_network_name
-        opts[:subnet_name]                      = network_configurator.subnet_name
-        opts[:static_virtual_network_ipaddress] = network_configurator.private_ip
-      end
-
-      opts[:tcp_endpoints] = network_configurator.tcp_endpoints
-
-      params[:custom_data] = get_user_data(params[:vm_name], network_configurator.dns)
-
-      logger.debug("params: #{params}")
-      logger.debug("opts: #{opts}")
-      result = @azure_vm_service.create_virtual_machine(params, opts)
-      if result.is_a? String
-        @azure_cloud_service.delete_cloud_service(opts[:cloud_service_name]) if @azure_cloud_service.get_cloud_service(opts[:cloud_service_name])
-        cloud_error("Failed to create vm: #{result}")
-      end
-
-      result
     end
 
     def find(instance_id)
