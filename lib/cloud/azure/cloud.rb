@@ -100,7 +100,7 @@ module Bosh::AzureCloud
             NetworkConfigurator.new(networks),
             resource_pool)
 
-          instance_id = generate_instance_id(instance.cloud_service_name, instance.vm_name)
+          instance_id = generate_instance_id(instance[:cloud_service_name], instance[:vm_name])
 
           logger.info("Created new instance '#{instance_id}'")
 
