@@ -67,20 +67,46 @@ module Bosh::AzureCloud
       params.each_pair do |key,values| crp_params[key]={"value"=>values}  end
     
      
-     require 'open3'
-     deployt_crp_log  = ""
-     exit_status = 0
+      require 'open3'
+      deployt_crp_log  = ""
+      exit_status = 0
 
-     `azure config mode arm`
-     Open3.popen3("azure","group","deployment","create",cloud_opts['resource_group_name'],
-                    "-n",params[:vm_name],"-f",File.join(File.dirname(__FILE__),"bosh_deploy_vm.json"),"-p",crp_params.to_json) {|stdin, stdout, stderr, wait_thr|
-         pid = wait_thr.pid # pid of the started process
-         exit_status = wait_thr.value 
-         deployt_crp_log<<stdout.read
-         deployt_crp_log<<stderr.read
-     }
+      `azure config mode arm`
+      Open3.popen3("azure","group","deployment","create",cloud_opts['resource_group_name'],
+                    "-n",params[:vm_name],"-f",File.join(File.dirname(__FILE__),"bosh_deploy_vm.json"),"-p",crp_params.to_json) {
+      |stdin, stdout, stderr, wait_thr|
+          pid = wait_thr.pid # pid of the started process
+          exit_status = wait_thr.value 
+          deployt_crp_log<<stdout.read
+          deployt_crp_log<<stderr.read
+      }
+      logger.debug("Creating VM: #{deployt_crp_log}")
+      if  exit_status !=0
+        logger.error("Failed to create vm")
+        cloud_error("Failed to create vm")
+      end
 
-      logger.debug("Create VM: #{deployt_crp_log}")
+     
+      for i in 1..100
+  	  sleep 30
+          deploy_result=""
+          deploy_result = `azure group deployment show  #{cloud_opts['resource_group_name']} #{params[:vm_name]} 2>&1 `
+          cloud_error("Failed to get deploymnet #{deploy_result}") if $?!=0
+          deploy_result = deploy_result.match("ProvisioningState\s*:\s*(.*)").captures[0]
+        
+        if deploy_result=~/Failed/
+          resource_group_name = cloud_opts['resource_group_name']
+          logs = `azure group log show #{resource_group_name} 2>&1`
+          logger.error("Failed to create vm"+logs)
+          cloud_error("Failed to create vm")
+        end
+  	if not deploy_result=~/Running/
+    		break
+  	end
+  	logger.info("Wait for deployment#{params[:vm_name]} stats:#{deploy_result} to finish")
+      end
+  
+
       if  exit_status !=0
         logger.error("Failed to create vm")
         cloud_error("Failed to create vm")
