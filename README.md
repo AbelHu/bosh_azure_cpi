@@ -63,7 +63,7 @@ These are two samples of how Azure specific properties are used in a BOSH deploy
 
 * networks.default.type is 'manual'
 
-    ---
+```
     name: sample
     director_uuid: 081e60b9-160e-4236-b12f-ea11293d95e3
 
@@ -117,11 +117,11 @@ These are two samples of how Azure specific properties are used in a BOSH deploy
         client_id: <your_client_id>
         client_secret: <your_client_secret>
         ssh_certificate: <content_of_your_ssh_certificate>
-
+```
 
 * networks.default.type is 'dynamic'
 
-    ---
+```
     name: sample
     director_uuid: 081e60b9-160e-4236-b12f-ea11293d95e3
 
@@ -175,3 +175,4 @@ These are two samples of how Azure specific properties are used in a BOSH deploy
         client_id: <your_client_id>
         client_secret: <your_client_secret>
         ssh_certificate: <content_of_your_ssh_certificate>
+```
